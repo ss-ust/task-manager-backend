@@ -18,46 +18,33 @@ router.post('/register', async (req, res) => {
   const trimmedRole = role.trim();
 
   try {
-    // Önce kullanıcı var mı kontrol et
-    db.get('SELECT id FROM users WHERE username = ?', [trimmedUsername], async (err, row) => {
-      if (err) {
-        console.error('[DB Check Error]', err);
-        return res.status(500).json({ message: 'Internal error during user check' });
-      }
+    // Kullanıcı adı daha önce alınmış mı?
+    const existingUser = db.prepare('SELECT * FROM users WHERE username = ?').get(trimmedUsername);
+    if (existingUser) {
+      return res.status(409).json({ message: 'Username already exists' });
+    }
 
-      if (row) {
-        return res.status(409).json({ message: 'Username already exists' });
-      }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run(
+      trimmedUsername,
+      hashedPassword,
+      trimmedRole
+    );
 
-      // Kullanıcı yoksa şifreyi hashle ve ekle
-      const hashedPassword = await bcrypt.hash(password, 10);
-      db.run(
-        'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
-        [trimmedUsername, hashedPassword, trimmedRole],
-        function (insertErr) {
-          if (insertErr) {
-            console.error('[Register Insert Error]', insertErr);
-            return res.status(500).json({ message: 'Registration failed' });
-          }
-          return res.status(201).json({ message: 'User registered successfully' });
-        }
-      );
-    });
+    res.status(201).json({ message: 'User registered successfully' });
   } catch (err) {
     console.error('[Register Error]', err);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ message: 'Registration failed' });
   }
 });
 
-// ✅ LOGIN (aynı)
-router.post('/login', (req, res) => {
+// ✅ LOGIN
+router.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
-  db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
-    if (err) {
-      console.error('[Login DB Error]', err);
-      return res.status(500).json({ message: 'Internal server error' });
-    }
+  try {
+    const stmt = db.prepare('SELECT * FROM users WHERE username = ?');
+    const user = stmt.get(username);
 
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -67,29 +54,28 @@ router.post('/login', (req, res) => {
       return res.status(500).json({ message: 'User has no password set' });
     }
 
-    try {
-      const valid = await bcrypt.compare(password, user.password);
-      if (!valid) {
-        return res.status(401).json({ message: 'Invalid credentials' });
-      }
+    const valid = await bcrypt.compare(password, user.password);
 
-      const token = jwt.sign(
-        { id: user.id, role: user.role, username: user.username },
-        SECRET_KEY,
-        { expiresIn: '1d' }
-      );
-
-      return res.json({
-        token,
-        id: user.id,
-        username: user.username,
-        role: user.role
-      });
-    } catch (err) {
-      console.error('[Login Hash Error]', err);
-      return res.status(500).json({ message: 'Internal server error' });
+    if (!valid) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
-  });
+
+    const token = jwt.sign(
+      { id: user.id, role: user.role, username: user.username },
+      SECRET_KEY,
+      { expiresIn: '1d' }
+    );
+
+    res.json({
+      token,
+      id: user.id,
+      username: user.username,
+      role: user.role
+    });
+  } catch (err) {
+    console.error('[Login Error]', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 module.exports = router;
