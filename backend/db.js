@@ -1,30 +1,22 @@
-// db.js
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const path = require('path');
 
 const dbPath = path.resolve(__dirname, 'taskmanager.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error("Veritabanı bağlantı hatası:", err.message);
-  } else {
-    console.log("SQLite veritabanına bağlanıldı.");
-    createTables();
-  }
-});
+const db = new Database(dbPath);
 
 function createTables() {
   // Users tablosu
-  db.run(`
+  db.prepare(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       role TEXT NOT NULL
     )
-  `);
+  `).run();
 
   // Tasks tablosu
-  db.run(`
+  db.prepare(`
     CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -39,10 +31,10 @@ function createTables() {
       createdBy INTEGER NOT NULL,
       FOREIGN KEY (createdBy) REFERENCES users(id)
     )
-  `);
+  `).run();
 
   // Comments tablosu
-  db.run(`
+  db.prepare(`
     CREATE TABLE IF NOT EXISTS comments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       taskId INTEGER NOT NULL,
@@ -52,7 +44,10 @@ function createTables() {
       FOREIGN KEY (taskId) REFERENCES tasks(id) ON DELETE CASCADE,
       FOREIGN KEY (userId) REFERENCES users(id)
     )
-  `);
+  `).run();
 }
+
+// Veritabanını oluştur ve tabloları ayarla
+createTables();
 
 module.exports = db;
